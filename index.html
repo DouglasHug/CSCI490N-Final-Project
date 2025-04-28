@@ -103,7 +103,13 @@
           y0Emp: recordStartYear["Normalized Employment"],
           y1Emp: recordEndYear["Normalized Employment"],
           y0Mem: recordStartYear["Normalized Membership"],
-          y1Mem: recordEndYear["Normalized Membership"]
+          y1Mem: recordEndYear["Normalized Membership"],
+		  startYearData: {
+            "% Mem": recordStartYear["% Mem"]
+          },
+          endYearData: {
+            "% Mem": recordEndYear["% Mem"]
+          }
         });
       }
     });
@@ -150,6 +156,8 @@
 
     barData.forEach((d, i) => {
       const groupColor = colorScale(d.cic);
+      const startMembershipPercent = d.startYearData["% Mem"];
+      const endMembershipPercent = d.endYearData["% Mem"];
 
 //Prob turn these into helper functions later
       const pathEmployment = d3.path();
@@ -166,7 +174,7 @@
         .on("mouseover", function(event) {
           const tooltip = document.getElementById("tooltip");
           tooltip.style.visibility = "visible";
-          tooltip.innerHTML = `(${d.cic}) ${d.industry}`;
+          tooltip.innerHTML = `(${d.cic}) ${d.industry}<br/> Union Mem. Change: ${startMembershipPercent} -> ${endMembershipPercent}`;
         })
         .on("mousemove", function(event) {
           const tooltip = document.getElementById("tooltip");
@@ -194,7 +202,7 @@
         .on("mouseover", function(event) {
           const tooltip = document.getElementById("tooltip");
           tooltip.style.visibility = "visible";
-          tooltip.innerHTML = `(${d.cic}) ${d.industry}`;
+          tooltip.innerHTML = `(${d.cic}) ${d.industry}<br/> Union Mem. Change: ${startMembershipPercent} -> ${endMembershipPercent}`;
         })
         .on("mousemove", function(event) {
           const tooltip = document.getElementById("tooltip");
@@ -421,7 +429,7 @@
 
     <div id="content-container">
     </div>
-    <div>Hirsch, Barry T., David A. Macpherson, and William E. Even (2025).  Union Membership, Coverage, and Earnings from the CPS.   https://unionstats.com</div>
+	<div>Hirsch, Barry T., David A. Macpherson, and William E. Even (2025).  Union Membership, Coverage, and Earnings from the CPS.   https://unionstats.com</div>
   </body>
   
 </html>
