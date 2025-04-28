@@ -1,14 +1,25 @@
 <!DOCTYPE html>
 <script type="module">
-
-  import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
-  import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm";
+//-------------------------------------------------------------------------------------------------
+//---------------------------- Notes/To-Do --------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+// ~dual-sided slider for year select
+// ~dual-sided slider for employment # constraints
+// sort left-to-right either by employment # or union worker #
+// need to allow choosing which year's values to sort by
+//experiment with stringing together many years (pseudo line chart)
+// create view when clicked, display a line chart per bar?
 
 
 
 //-------------------------------------------------------------------------------------------------
 //---------------------------- Data Imports -------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
+
+  import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+  import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm";
+  
+  
   const start_data = await d3.csv("https://gist.githubusercontent.com/DouglasHug/e98a0608b8d00483ef46010be923eb65/raw/815f05f8fd4b35c25a11a0f7e674d51959828c66/union_data.csv");
 
 
@@ -28,7 +39,7 @@
 
   const width = 1800;
   const height = 900;
-  const margin = {top: 50, right: 0, bottom: 300, left: 50};
+  const margin = {top: 50, right: 0, bottom: 300, left: 90};
 
   document.getElementById('min-employment').value = minEmployment;
   document.getElementById('max-employment').value = maxEmployment;
@@ -40,7 +51,7 @@
     .domain(start_data.map(d => d.CIC))
     .range(d3.schemePaired);
 
-  let currentSort = 'default';
+  let currentSort;
 
 
 
@@ -49,31 +60,26 @@
 //-------------------------------------------------------------------------------------------------
 
   function updateChart() {
-
-    const filtered = start_data.filter(d => 
-      (d.Year == startYear || d.Year == endYear) && d.CIC
-    ).map(d => {
-      const employment = parseFloat(d["Employment (in 1000s)"].replace(/,/g, ''));
-      const membership = parseFloat(d["Members (in 1000s)"].replace(/,/g, ''));
-      return {
+    const filtered = start_data
+      .filter(d => (d.Year == startYear || d.Year == endYear) && d.CIC)
+      .map(d => ({
         ...d,
-        "Employment (in 1000s)": employment,
-        "Members (in 1000s)": membership
-      };
-    });
+        "Employment (in 1000s)": parseFloat(d["Employment (in 1000s)"].replace(/,/g, '')),
+        "Members (in 1000s)": parseFloat(d["Members (in 1000s)"].replace(/,/g, ''))
+      }));
 
     const inRangeIndustries = new Set(
-      filtered.filter(d =>
-        d["Employment (in 1000s)"] >= minEmployment &&
-        d["Employment (in 1000s)"] <= maxEmployment
-      ).map(d => d.CIC)
+      filtered
+	    .filter(d =>
+          d["Employment (in 1000s)"] >= minEmployment &&
+          d["Employment (in 1000s)"] <= maxEmployment
+		)
+		.map(d => d.CIC)
     );
 
     const finalFiltered = filtered.filter(d => inRangeIndustries.has(d.CIC));
-
     const maxValue = d3.max(finalFiltered, d => d["Employment (in 1000s)"]);
 
-    const roundedMaxValue = Math.ceil(maxValue / 100) * 100;
 
     normalizedData = finalFiltered.map(d => ({
       ...d,
@@ -104,10 +110,12 @@
 
     if (currentSort === 'employment') {
       barData.sort((a, b) => d3.descending(a.y0Emp, b.y0Emp));
-    } else if (currentSort === 'membership') {
+    } 
+	else if (currentSort === 'membership') {
       barData.sort((a, b) => d3.descending(a.y0Mem, b.y0Mem));
     }
 
+    const roundedMaxValue = Math.ceil(maxValue / 100) * 100;
     renderChart(roundedMaxValue);
   }
 
@@ -128,8 +136,7 @@
 
     const stepSize = roundedMaxValue / 20;  
 
-    svg.selectAll(".y-gridline").remove();
-
+//Might not need selectAll anymore? check if append works fine here. might need selectAll for multi-bar design?
     svg.selectAll(".y-gridline")
       .data(d3.range(0, roundedMaxValue + stepSize, stepSize))
       .enter().append("line")
@@ -138,12 +145,13 @@
       .attr("x2", width - margin.right)
       .attr("y1", d => yScale(d))
       .attr("y2", d => yScale(d))
-      .attr("stroke", "#ccc")
+      .attr("stroke", "#D3D3D3")
       .attr("stroke-dasharray", "2,2");  
 
     barData.forEach((d, i) => {
       const groupColor = colorScale(d.cic);
 
+//Prob turn these into helper functions later
       const pathEmployment = d3.path();
       pathEmployment.moveTo(xScale(i - 0.4), yScale(0));
       pathEmployment.lineTo(xScale(i - 0.4), yScale(d.y0Emp * roundedMaxValue));
@@ -154,7 +162,23 @@
       svg.append("path")
         .attr("d", pathEmployment)
         .attr("fill", groupColor)
-        .attr("opacity", 0.4);
+        .attr("opacity", 0.4)
+        .on("mouseover", function(event) {
+          const tooltip = document.getElementById("tooltip");
+          tooltip.style.visibility = "visible";
+          tooltip.innerHTML = `(${d.cic}) ${d.industry}`;
+        })
+        .on("mousemove", function(event) {
+          const tooltip = document.getElementById("tooltip");
+          tooltip.style.top = `${event.pageY + 5}px`;
+          tooltip.style.left = `${event.pageX + 5}px`;
+        })
+        .on("mouseout", function() {
+          const tooltip = document.getElementById("tooltip");
+          tooltip.style.visibility = "hidden";
+        });
+
+
 
       const pathMembership = d3.path();
       pathMembership.moveTo(xScale(i - 0.4), yScale(0));
@@ -166,7 +190,21 @@
       svg.append("path")
         .attr("d", pathMembership)
         .attr("fill", groupColor)
-        .attr("opacity", 1);
+        .attr("opacity", 1)
+        .on("mouseover", function(event) {
+          const tooltip = document.getElementById("tooltip");
+          tooltip.style.visibility = "visible";
+          tooltip.innerHTML = `(${d.cic}) ${d.industry}`;
+        })
+        .on("mousemove", function(event) {
+          const tooltip = document.getElementById("tooltip");
+          tooltip.style.top = `${event.pageY + 5}px`;
+          tooltip.style.left = `${event.pageX + 5}px`;
+        })
+        .on("mouseout", function() {
+          const tooltip = document.getElementById("tooltip");
+          tooltip.style.visibility = "hidden";
+        });
     });
 
     const tickValues = d3.range(0, roundedMaxValue + stepSize, stepSize);
@@ -185,8 +223,8 @@
       .call(xAxis)
       .selectAll("text")
       .style("text-anchor", "end")
-      .attr("dx", "-0.8em")
-      .attr("dy", "-0.15em")
+      .attr("dx", "-1rem")
+      .attr("dy", "0rem")
       .attr("transform", "rotate(-65)");
 
     svg.append("g")
@@ -196,17 +234,17 @@
     svg.append("text")
       .attr("transform", `rotate(-90)`)
       .attr("y", 20)
-      .attr("x", 0 - (height / 2))
-      .attr("dy", "-5.1em")
+      .attr("x", 0 - (height / 3))
+      .attr("dy", margin.left - 80)
       .style("text-anchor", "middle")
-      .text("Normalized Employment");
+      .text("Number of Employees (1000s)");
 
     svg.append("text")
       .attr("x", width / 2)
       .attr("y", margin.top / 2)
       .attr("text-anchor", "middle")
       .style("font-size", "24px")
-      .text(`Industry Employment Changes (Normalized, ${startYear} to ${endYear})`);
+      .text(`Changes in Employment and Union Membership (${startYear} to ${endYear})`);
 
     document.getElementById('content-container').appendChild(svg.node());
   }
@@ -217,6 +255,7 @@
 //---------------------------- Buttons/Sliders Events ---------------------------------------------
 //-------------------------------------------------------------------------------------------------
 
+//Prob can create a helper function for these as well later
   document.getElementById('sort-employment').addEventListener('click', () => {
     currentSort = 'employment';
     updateChart();
@@ -264,7 +303,7 @@
 
 
 <style>
-/**** General Formatting ****/
+  /**** General Formatting ****/
     body {
       background: #19232d;
       color: white;
@@ -274,7 +313,7 @@
     }
 
 
-/**** Information Boxes ****/
+  /**** Information Boxes ****/
     #info {
       display: flex;
       width: 100%;
@@ -308,15 +347,18 @@
       padding-right: 0.5rem;
     }
 	
-/**** SVG ****/
+  /**** SVG ****/
     g text {
       fill: black;
     }
     path {
       stroke: #000000;
     }
+	g line {
+	  stroke: black;
+	}
 
-/**** Visualization Container ****/
+  /**** Visualization Container ****/
 	#content-container {
 	  display: flex;
 	  background: white;
@@ -332,24 +374,23 @@
       min-width: 40px; 
       text-align: right;
     }
-    
+    #tooltip {
+      position: absolute;
+      background: #19232d;
+      color: white;
+      padding: 10px;
+      border-radius: 4px;
+      visibility: hidden;
+    }
 </style>
   
   <head>
-    <title>Final Project</title>
-    <div id="info">
-      <div class="left">
-        <h1>Douglas Hug</h1>
-        <h2>Z1887862</h2>
-      </div>
-      <div class="right">
-        <h2>Data Visualization (CSCI 627/490)</h2>
-        <h2>Final Project</h2>
-      </div>
-    </div>
+
   </head>
   
   <body>
+    <div id="tooltip"></div>
+	
     <div id="controls">
       <div id="year-controls-container">
         <div>
