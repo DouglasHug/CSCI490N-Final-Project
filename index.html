@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<script type="module">
+
+  import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+  import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm";
+
+
+
+//-------------------------------------------------------------------------------------------------
+//---------------------------- Data Imports -------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+  const start_data = await d3.csv("https://gist.githubusercontent.com/DouglasHug/e98a0608b8d00483ef46010be923eb65/raw/815f05f8fd4b35c25a11a0f7e674d51959828c66/union_data.csv");
+
+
+
+//-------------------------------------------------------------------------------------------------
+//---------------------------- Global Variables ---------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+  let startYear = 2009;
+  let endYear = 2024;
+
+  let minEmployment = 1000;
+  let maxEmployment = 4000;
+
+  let normalizedData = [];
+  let barData = [];
+  let industryGroups = [];
+
+  const width = 1800;
+  const height = 900;
+  const margin = {top: 50, right: 0, bottom: 300, left: 50};
+
+  document.getElementById('min-employment').value = minEmployment;
+  document.getElementById('max-employment').value = maxEmployment;
+  document.getElementById('min-employment-label').textContent = minEmployment;
+  document.getElementById('max-employment-label').textContent = maxEmployment;
+
+
+  const colorScale = d3.scaleOrdinal()
+    .domain(start_data.map(d => d.CIC))
+    .range(d3.schemePaired);
+
+  let currentSort = 'default';
+
+
+
+//-------------------------------------------------------------------------------------------------
+//---------------------------- Chart Creation Functions -------------------------------------------
+//-------------------------------------------------------------------------------------------------
+
+  function updateChart() {
+
+    const filtered = start_data.filter(d => 
+      (d.Year == startYear || d.Year == endYear) && d.CIC
+    ).map(d => {
+      const employment = parseFloat(d["Employment (in 1000s)"].replace(/,/g, ''));
+      const membership = parseFloat(d["Members (in 1000s)"].replace(/,/g, ''));
+      return {
+        ...d,
+        "Employment (in 1000s)": employment,
+        "Members (in 1000s)": membership
+      };
+    });
+
+    const inRangeIndustries = new Set(
+      filtered.filter(d =>
+        d["Employment (in 1000s)"] >= minEmployment &&
+        d["Employment (in 1000s)"] <= maxEmployment
+      ).map(d => d.CIC)
+    );
+
+    const finalFiltered = filtered.filter(d => inRangeIndustries.has(d.CIC));
+
+    const maxValue = d3.max(finalFiltered, d => d["Employment (in 1000s)"]);
+
+    const roundedMaxValue = Math.ceil(maxValue / 100) * 100;
+
+    normalizedData = finalFiltered.map(d => ({
+      ...d,
+      "Normalized Employment": d["Employment (in 1000s)"] / maxValue,
+      "Normalized Membership": d["Members (in 1000s)"] / maxValue
+    }));
+
+    industryGroups = d3.groups(normalizedData, d => d.CIC);
+
+    barData = [];
+    industryGroups.forEach(([cic, records], index) => {
+      const recordStartYear = records.find(d => d.Year == startYear);
+      const recordEndYear = records.find(d => d.Year == endYear);
+
+      if (recordStartYear && recordEndYear) {
+        barData.push({
+          cic,
+          industry: records[0].Industry,
+          x0: index - 0.4,
+          x1: index + 0.4,
+          y0Emp: recordStartYear["Normalized Employment"],
+          y1Emp: recordEndYear["Normalized Employment"],
+          y0Mem: recordStartYear["Normalized Membership"],
+          y1Mem: recordEndYear["Normalized Membership"]
+        });
+      }
+    });
+
+    if (currentSort === 'employment') {
+      barData.sort((a, b) => d3.descending(a.y0Emp, b.y0Emp));
+    } else if (currentSort === 'membership') {
+      barData.sort((a, b) => d3.descending(a.y0Mem, b.y0Mem));
+    }
+
+    renderChart(roundedMaxValue);
+  }
+
+  function renderChart(roundedMaxValue) {
+    d3.select("#content-container").selectAll("*").remove();
+
+    const svg = d3.create("svg")
+      .attr("width", width)
+      .attr("height", height);
+
+    const xScale = d3.scaleLinear()
+      .domain([-0.5, barData.length - 0.5])
+      .range([margin.left, width - margin.right]);
+
+    const yScale = d3.scaleLinear()
+      .domain([0, roundedMaxValue])
+      .range([height - margin.bottom, margin.top]);
+
+    const stepSize = roundedMaxValue / 20;  
+
+    svg.selectAll(".y-gridline").remove();
+
+    svg.selectAll(".y-gridline")
+      .data(d3.range(0, roundedMaxValue + stepSize, stepSize))
+      .enter().append("line")
+      .attr("class", "y-gridline")
+      .attr("x1", margin.left)
+      .attr("x2", width - margin.right)
+      .attr("y1", d => yScale(d))
+      .attr("y2", d => yScale(d))
+      .attr("stroke", "#ccc")
+      .attr("stroke-dasharray", "2,2");  
+
+    barData.forEach((d, i) => {
+      const groupColor = colorScale(d.cic);
+
+      const pathEmployment = d3.path();
+      pathEmployment.moveTo(xScale(i - 0.4), yScale(0));
+      pathEmployment.lineTo(xScale(i - 0.4), yScale(d.y0Emp * roundedMaxValue));
+      pathEmployment.lineTo(xScale(i + 0.4), yScale(d.y1Emp * roundedMaxValue));
+      pathEmployment.lineTo(xScale(i + 0.4), yScale(0));
+      pathEmployment.closePath();
+
+      svg.append("path")
+        .attr("d", pathEmployment)
+        .attr("fill", groupColor)
+        .attr("opacity", 0.4);
+
+      const pathMembership = d3.path();
+      pathMembership.moveTo(xScale(i - 0.4), yScale(0));
+      pathMembership.lineTo(xScale(i - 0.4), yScale(d.y0Mem * roundedMaxValue));
+      pathMembership.lineTo(xScale(i + 0.4), yScale(d.y1Mem * roundedMaxValue));
+      pathMembership.lineTo(xScale(i + 0.4), yScale(0));
+      pathMembership.closePath();
+
+      svg.append("path")
+        .attr("d", pathMembership)
+        .attr("fill", groupColor)
+        .attr("opacity", 1);
+    });
+
+    const tickValues = d3.range(0, roundedMaxValue + stepSize, stepSize);
+
+    const xAxis = d3.axisBottom(xScale)
+      .ticks(barData.length)
+      .tickFormat((_, i) => barData[i]?.industry ?? "");
+
+    const yAxis = d3.axisLeft(yScale)
+      .tickValues(tickValues)
+      .tickFormat(d3.format(".0f"))
+      .tickSize(0);
+
+    svg.append("g")
+      .attr("transform", `translate(0,${height - margin.bottom})`)
+      .call(xAxis)
+      .selectAll("text")
+      .style("text-anchor", "end")
+      .attr("dx", "-0.8em")
+      .attr("dy", "-0.15em")
+      .attr("transform", "rotate(-65)");
+
+    svg.append("g")
+      .attr("transform", `translate(${margin.left - 20},0)`)
+      .call(yAxis);
+
+    svg.append("text")
+      .attr("transform", `rotate(-90)`)
+      .attr("y", 20)
+      .attr("x", 0 - (height / 2))
+      .attr("dy", "-5.1em")
+      .style("text-anchor", "middle")
+      .text("Normalized Employment");
+
+    svg.append("text")
+      .attr("x", width / 2)
+      .attr("y", margin.top / 2)
+      .attr("text-anchor", "middle")
+      .style("font-size", "24px")
+      .text(`Industry Employment Changes (Normalized, ${startYear} to ${endYear})`);
+
+    document.getElementById('content-container').appendChild(svg.node());
+  }
+
+
+
+//-------------------------------------------------------------------------------------------------
+//---------------------------- Buttons/Sliders Events ---------------------------------------------
+//-------------------------------------------------------------------------------------------------
+
+  document.getElementById('sort-employment').addEventListener('click', () => {
+    currentSort = 'employment';
+    updateChart();
+  });
+
+  document.getElementById('sort-membership').addEventListener('click', () => {
+    currentSort = 'membership';
+    updateChart();
+  });
+
+  document.getElementById('start-year').addEventListener('input', (e) => {
+    startYear = +e.target.value;
+    document.getElementById('start-year-label').textContent = startYear;
+    updateChart();
+  });
+
+  document.getElementById('end-year').addEventListener('input', (e) => {
+    endYear = +e.target.value;
+    document.getElementById('end-year-label').textContent = endYear;
+    updateChart();
+  });
+
+  document.getElementById('min-employment').addEventListener('input', (e) => {
+    minEmployment = +e.target.value;
+    document.getElementById('min-employment-label').textContent = minEmployment;
+    updateChart();
+  });
+
+  document.getElementById('max-employment').addEventListener('input', (e) => {
+    maxEmployment = +e.target.value;
+    document.getElementById('max-employment-label').textContent = maxEmployment;
+    updateChart();
+  });
+
+
+
+
+
+  updateChart();
+
+</script>
+<html lang="en">
+
+
+
+
+<style>
+/**** General Formatting ****/
+    body {
+      background: #19232d;
+      color: white;
+    }
+    h1 {
+      padding-top: 2rem;
+    }
+
+
+/**** Information Boxes ****/
+    #info {
+      display: flex;
+      width: 100%;
+      color: #0867d2;
+    }
+	.left {
+      box-sizing: border-box;
+      border: 2px solid #21252b;
+      border-radius: 5px;
+      background: #323e50;
+    }
+    .left h1, h2 {
+      margin: 0;
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+      padding-top: 0;
+    }
+    .right {
+      margin-left: auto;
+      align-self: flex-end;
+      box-sizing: border-box;
+      border: 2px solid #21252b;
+      border-radius: 5px;
+      background: #323e50;
+    }
+    .right h2 {
+      font-style: italic;
+      font-weight: normal;
+      margin: 0;
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+	
+/**** SVG ****/
+    g text {
+      fill: black;
+    }
+    path {
+      stroke: #000000;
+    }
+
+/**** Visualization Container ****/
+	#content-container {
+	  display: flex;
+	  background: white;
+	}
+    #controls {
+	  display: flex;
+	}
+    #year-controls-container, #employment-controls-container {
+	  padding-right: 2rem;
+	}
+    #min-employment-label, #max-employment-label {
+      display: inline-block;
+      min-width: 40px; 
+      text-align: right;
+    }
+    
+</style>
+  
+  <head>
+    <title>Final Project</title>
+    <div id="info">
+      <div class="left">
+        <h1>Douglas Hug</h1>
+        <h2>Z1887862</h2>
+      </div>
+      <div class="right">
+        <h2>Data Visualization (CSCI 627/490)</h2>
+        <h2>Final Project</h2>
+      </div>
+    </div>
+  </head>
+  
+  <body>
+    <div id="controls">
+      <div id="year-controls-container">
+        <div>
+          <label for="start-year">Start Year: <span id="start-year-label">2009</span></label>
+          <input type="range" id="start-year" min="2009" max="2024" value="2009" step="1">
+        </div>
+
+        <div>
+          <label for="end-year">End Year: <span id="end-year-label">2024</span></label>
+          <input type="range" id="end-year" min="2009" max="2024" value="2024" step="1">
+        </div>
+      </div>
+	
+	  <div id="employment-controls-container">
+        <div>
+          <label for="min-employment">Minimum Employment: <span id="min-employment-label">0</span></label>
+          <input type="range" id="min-employment" min="0" max="10000" step="100" value="0">
+        </div>
+
+        <div>
+          <label for="max-employment">Maximum Employment: <span id="max-employment-label">10000</span></label>
+          <input type="range" id="max-employment" min="0" max="10000" step="100" value="10000">
+        </div>
+      </div>
+      <button id="sort-employment">Sort by Employment</button>
+      <button id="sort-membership">Sort by Membership</button>
+    </div>
+
+    <div id="content-container">
+    </div>
+  </body>
+  
+</html>
