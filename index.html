@@ -20,8 +20,19 @@
   import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm";
   
   
-  const start_data = await d3.csv("https://gist.githubusercontent.com/DouglasHug/e98a0608b8d00483ef46010be923eb65/raw/815f05f8fd4b35c25a11a0f7e674d51959828c66/union_data.csv");
+  let raw_data = await d3.csv("https://gist.githubusercontent.com/DouglasHug/e98a0608b8d00483ef46010be923eb65/raw/815f05f8fd4b35c25a11a0f7e674d51959828c66/union_data.csv");
 
+//Grouping by industry, seems to work but might be kind of rough. Also probably needs more colors.
+  let currentCategory = "";
+  const start_data = raw_data.map(row => {
+    if (!row.CIC) {
+      currentCategory = row.Industry;
+    }
+    return {
+      ...row,
+      category: currentCategory
+    };
+  });
 
 
 //-------------------------------------------------------------------------------------------------
@@ -47,9 +58,11 @@
   document.getElementById('max-employment-label').textContent = maxEmployment;
 
 
+  const uniqueCategories = Array.from(new Set(start_data.map(d => d.category)));
+  
   const colorScale = d3.scaleOrdinal()
-    .domain(start_data.map(d => d.CIC))
-    .range(d3.schemePaired);
+    .domain(uniqueCategories)
+    .range(d3.schemePaired.concat(d3.schemeSet3));
 
   let currentSort;
 
@@ -97,6 +110,7 @@
       if (recordStartYear && recordEndYear) {
         barData.push({
           cic,
+          category: records[0].category,
           industry: records[0].Industry,
           x0: index - 0.4,
           x1: index + 0.4,
@@ -114,11 +128,17 @@
       }
     });
 
-    if (currentSort === 'employment') {
+    if (currentSort === 'employment0') {
       barData.sort((a, b) => d3.descending(a.y0Emp, b.y0Emp));
     } 
-	else if (currentSort === 'membership') {
+	else if (currentSort === 'employment1') {
+      barData.sort((a, b) => d3.descending(a.y1Emp, b.y1Emp));
+    }
+	else if (currentSort === 'membership0') {
       barData.sort((a, b) => d3.descending(a.y0Mem, b.y0Mem));
+    }
+	else if (currentSort === 'membership1') {
+      barData.sort((a, b) => d3.descending(a.y1Mem, b.y1Mem));
     }
 
     const roundedMaxValue = Math.ceil(maxValue / 100) * 100;
@@ -155,7 +175,7 @@
       .attr("stroke-dasharray", "2,2");  
 
     barData.forEach((d, i) => {
-      const groupColor = colorScale(d.cic);
+      const groupColor = colorScale(d.category);
       const startMembershipPercent = d.startYearData["% Mem"];
       const endMembershipPercent = d.endYearData["% Mem"];
 
@@ -264,13 +284,21 @@
 //-------------------------------------------------------------------------------------------------
 
 //Prob can create a helper function for these as well later
-  document.getElementById('sort-employment').addEventListener('click', () => {
-    currentSort = 'employment';
+  document.getElementById('sort-employmenty0').addEventListener('click', () => {
+    currentSort = 'employment0';
+    updateChart();
+  });
+  document.getElementById('sort-employmenty1').addEventListener('click', () => {
+    currentSort = 'employment1';
     updateChart();
   });
 
-  document.getElementById('sort-membership').addEventListener('click', () => {
-    currentSort = 'membership';
+  document.getElementById('sort-membershipy0').addEventListener('click', () => {
+    currentSort = 'membership0';
+    updateChart();
+  });
+  document.getElementById('sort-membershipy1').addEventListener('click', () => {
+    currentSort = 'membership1';
     updateChart();
   });
 
@@ -423,8 +451,10 @@
           <input type="range" id="max-employment" min="0" max="10000" step="100" value="10000">
         </div>
       </div>
-      <button id="sort-employment">Sort by Employment</button>
-      <button id="sort-membership">Sort by Membership</button>
+      <button id="sort-employmenty0">Sort by Employment (Start Year)</button>
+      <button id="sort-employmenty1">Sort by Employment (End Year)</button>
+      <button id="sort-membershipy0">Sort by Membership (Start Year)</button>
+      <button id="sort-membershipy1">Sort by Membership (End Year)</button>
     </div>
 
     <div id="content-container">
